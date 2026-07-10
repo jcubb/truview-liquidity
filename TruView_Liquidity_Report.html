@@ -47,6 +47,21 @@
   td.days{font-weight:600}
   .foot{font-size:12px;color:var(--muted);margin-top:10px}
   .foot.warn{color:#b45309;font-weight:600}
+  .tabbar{display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid var(--line)}
+  .tab{background:none;border:none;padding:9px 16px;font-size:14px;color:var(--muted);cursor:pointer;
+       border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tab:hover{color:var(--ink)}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+  .datawrap{overflow:auto;max-height:62vh}
+  .datatbl{width:100%;border-collapse:collapse;font-size:13px}
+  .datatbl th,.datatbl td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+  .datatbl th{position:sticky;top:0;background:#fff;cursor:pointer;color:var(--muted);
+              text-transform:none;letter-spacing:0;font-weight:600;user-select:none}
+  .datatbl th.txt,.datatbl td.txt{text-align:left}
+  .datatbl tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none;
+                    position:sticky;bottom:0;background:#fff}
+  #panel-notes p,#panel-notes li{font-size:14px;color:#334155}
+  #panel-notes b{color:var(--ink)}
   .err{color:#b91c1c;font-size:14px;margin-top:10px}
   .pill{display:inline-block;background:var(--accent-soft);color:var(--accent);border-radius:999px;
         padding:2px 10px;font-size:12px;font-weight:600}
@@ -78,6 +93,14 @@
       </div>
     </div>
 
+    <div class="tabbar">
+      <button class="tab active" data-tab="report" type="button">Report</button>
+      <button class="tab" data-tab="data" type="button">Data</button>
+      <button class="tab" data-tab="notes" type="button">Notes</button>
+    </div>
+
+    <div id="panel-report" class="panel">
+
     <div class="card">
       <div class="grid2">
         <div>
@@ -92,7 +115,7 @@
 
       <div class="grid2" style="margin-top:16px">
         <div>
-          <label for="zval">Significant market impact override &nbsp;(Z, % of ADV)</label>
+          <label for="zval">Significant market impact override &nbsp;(% of ADV)</label>
           <input type="number" id="zval" step="1" min="0.0001" placeholder="original (per security)">
           <div class="foot" id="smiInitial" style="margin-top:6px">&mdash;</div>
         </div>
@@ -113,7 +136,7 @@
     </div>
 
     <div class="card">
-      <label>Days to liquidate (X)</label>
+      <label>Days to liquidate</label>
       <div class="row" id="dayRow"></div>
     </div>
 
@@ -123,7 +146,49 @@
         <thead><tr id="thDays"></tr></thead>
         <tbody><tr id="tdRes"></tr></tbody>
       </table>
-      <div class="foot" id="assumeNote"></div>
+    </div>
+
+    </div><!-- /panel-report -->
+
+    <div id="panel-data" class="panel hidden">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:12px">
+          <h3 style="margin:0;font-size:15px">Security-level data &mdash; <span id="dataFund"></span></h3>
+          <button class="btn" id="csvBtn" type="button">Download CSV</button>
+        </div>
+        <div class="datawrap"><table class="datatbl" id="dataTbl"></table></div>
+        <div class="foot" id="weightFlag" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <div id="panel-notes" class="panel hidden">
+      <div class="card">
+        <h3 style="margin:0 0 8px;font-size:15px">How these figures are calculated</h3>
+        <p>Each security has a <b>days&#8209;to&#8209;liquidate</b> value from the source file &mdash; the
+           number of days needed to sell the position under the market-impact assumption used when the
+           file was produced.</p>
+        <p>The report can adjust that value using two optional overrides:</p>
+        <ul>
+          <li><b>Significant market impact</b> &mdash; the assumed percentage of average daily trading
+              volume that can be sold per day without moving the price (the standard assumption is 20%).
+              Assuming a <i>higher</i> percentage lets a position sell faster, lowering its days to
+              liquidate. Left blank, each security keeps its own original assumption from the file,
+              reproducing the file exactly.</li>
+          <li><b>Market value</b> &mdash; a hypothetical fund size. A <i>larger</i> fund holds larger
+              positions and therefore takes proportionally longer to liquidate.</li>
+        </ul>
+        <p><b>Effective days to liquidate</b> = the file&rsquo;s days-to-liquidate
+           &times; (original impact assumption &divide; assumed impact)
+           &times; (hypothetical fund size &divide; actual fund market value).</p>
+        <p>For a given <b>horizon</b> (a number of days), a security counts toward the portfolio&rsquo;s
+           liquid percentage as follows: if it can be fully liquidated within that many days, its entire
+           portfolio weight counts; otherwise the fraction (horizon &divide; effective days to liquidate)
+           of its weight counts. Summing across all securities gives the percent of the portfolio that is
+           liquid by that horizon.</p>
+        <p class="foot">Because these figures come directly from the file&rsquo;s security weights, if
+           those weights do not sum to exactly 100% the portfolio total can land slightly above or below
+           100%. The <b>Data</b> tab shows the weight total and flags this.</p>
+      </div>
     </div>
 
   </div>
@@ -162,7 +227,7 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
   var DEFAULT_DAYS=[1,2,3,4,5,10,20];
 
   var state={rows:[],funds:[],byFund:{},codeToDesc:{},descToCode:{},
-             fundTotals:{},current:null};
+             fundTotals:{},current:null,dataSort:{col:null,dir:1}};
 
   var $=function(id){return document.getElementById(id);};
 
@@ -266,7 +331,7 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     /* meta */
     var d=parseDateFromName(fname);
     $("repDate").textContent=d||"not detected in filename";
-    $("repFile").textContent=fname+(state.sheetName?"  ·  sheet: "+state.sheetName:"");
+    $("repFile").textContent=fname;
 
     /* dropdowns */
     var fc=$("fundCode"), fd=$("fundDesc");
@@ -306,6 +371,119 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     recalc();
   });
 
+  /* tabs */
+  [].slice.call(document.querySelectorAll(".tab")).forEach(function(b){
+    b.addEventListener("click",function(){ showTab(b.dataset.tab); });
+  });
+  function showTab(name){
+    ["report","data","notes"].forEach(function(t){
+      $("panel-"+t).classList.toggle("hidden", t!==name);
+    });
+    [].slice.call(document.querySelectorAll(".tab")).forEach(function(b){
+      b.classList.toggle("active", b.dataset.tab===name);
+    });
+    if(name==="data") renderData(state.current);
+  }
+
+  $("csvBtn").addEventListener("click",function(){
+    if(!state.current) return;
+    var blob=new Blob([toCSV(state.current)],{type:"text/csv;charset=utf-8;"});
+    var a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=state.current+"_securities.csv";
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(a.href);
+  });
+
+  /* ---------- Data tab ---------- */
+  var DATA_COLS=[
+    {k:"security_name",label:"Security",txt:true},
+    {k:"ticker",label:"Ticker",txt:true},
+    {k:"cusip",label:"CUSIP",txt:true},
+    {k:"sec_liquidity",label:"Liquidity",txt:true},
+    {k:"market_value",label:"Market Value",fmt:function(v){return fmtMoney(num(v));}},
+    {k:"market_value__pct",label:"Weight %",fmt:function(v){return num(v).toFixed(3);}},
+    {k:"days_to_liquidate",label:"Days to Liq.",fmt:function(v){return num(v).toFixed(2);}},
+    {k:"significant_market_impact",label:"Impact %",fmt:function(v){return trim(num(v));}}
+  ];
+  function activeDataCols(){
+    var have=state.rows.length?Object.keys(state.rows[0]):[];
+    return DATA_COLS.filter(function(c){return have.indexOf(c.k)>=0;});
+  }
+  function esc(s){return String(s).replace(/[&<>]/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];});}
+
+  function renderData(code){
+    if(!code||!state.byFund[code]) return;
+    $("dataFund").textContent=code+" — "+state.codeToDesc[code];
+    var cols=activeDataCols();
+    var rows=state.byFund[code].slice();
+    var s=state.dataSort;
+    if(s.col){
+      rows.sort(function(a,b){
+        var av=a[s.col], bv=b[s.col], an=num(av), bn=num(bv);
+        var numeric=isFinite(an)&&isFinite(bn)&&av!=null&&av!==""&&bv!=null&&bv!=="";
+        var cmp=numeric?(an-bn):String(av==null?"":av).localeCompare(String(bv==null?"":bv));
+        return cmp*s.dir;
+      });
+    }
+    var sumMv=0,sumPct=0, html="<thead><tr>";
+    cols.forEach(function(c){
+      var arrow=(s.col===c.k)?(s.dir>0?" ▲":" ▼"):"";
+      html+="<th class='"+(c.txt?"txt":"")+"' data-k='"+c.k+"'>"+esc(c.label)+arrow+"</th>";
+    });
+    html+="</tr></thead><tbody>";
+    rows.forEach(function(r){
+      html+="<tr>";
+      cols.forEach(function(c){
+        var raw=r[c.k];
+        html+="<td class='"+(c.txt?"txt":"")+"'>"+esc(c.fmt?c.fmt(raw):(raw==null?"":raw))+"</td>";
+      });
+      html+="</tr>";
+      sumMv+=num(r[COLS.mv]); sumPct+=num(r[COLS.pct]);
+    });
+    html+="</tbody><tfoot><tr>";
+    cols.forEach(function(c,idx){
+      var t="";
+      if(c.k===COLS.mv) t=fmtMoney(sumMv);
+      else if(c.k===COLS.pct) t=sumPct.toFixed(3);
+      else if(idx===0) t="Total ("+rows.length+")";
+      html+="<td class='"+(c.txt?"txt":"")+"'>"+t+"</td>";
+    });
+    html+="</tr></tfoot>";
+    $("dataTbl").innerHTML=html;
+
+    [].slice.call($("dataTbl").querySelectorAll("th")).forEach(function(th){
+      th.addEventListener("click",function(){
+        var k=th.dataset.k;
+        if(state.dataSort.col===k) state.dataSort.dir*=-1;
+        else state.dataSort={col:k,dir:1};
+        renderData(code);
+      });
+    });
+
+    var wf=$("weightFlag");
+    if(Math.abs(sumPct-100)>0.05){
+      wf.className="foot warn";
+      wf.textContent="⚠ Security weights sum to "+sumPct.toFixed(2)+"%, not 100%. "
+        +"Portfolio-liquid figures are taken directly from these weights, so the total can land "
+        +"slightly above or below 100%.";
+    }else{
+      wf.className="foot";
+      wf.textContent="Security weights sum to "+sumPct.toFixed(2)+"%.";
+    }
+  }
+
+  function toCSV(code){
+    var cols=activeDataCols(), rows=state.byFund[code];
+    var lines=[cols.map(function(c){return csvCell(c.label);}).join(",")];
+    rows.forEach(function(r){
+      lines.push(cols.map(function(c){return csvCell(r[c.k]==null?"":r[c.k]);}).join(","));
+    });
+    return lines.join("\r\n");
+  }
+  function csvCell(v){var s=String(v);return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+
   function selectFund(code,syncDesc){
     if(!code||!state.byFund[code]) return;
     state.current=code;
@@ -315,6 +493,7 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     var tot=state.fundTotals[code];
     $("mvActual").textContent=fmtMoney(tot);
     $("mval").value=tot;              /* M resets to the new fund's actual value */
+    renderData(code);                 /* keep the Data tab in sync with the chosen fund */
 
     /* initial significant_market_impact used in the file, + uniform check */
     var si=state.fundSmi[code], note=$("smiInitial"), z=$("zval");
@@ -328,7 +507,7 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
       note.innerHTML="&#9888; Initial impact assumption <b>varies</b> across securities: "
                      +si.values.map(function(v){return trim(v)+"%";}).join(", ")
                      +". Leave the box blank to use each security’s own value, "
-                     +"or enter one Z to assume it for all.";
+                     +"or enter one percentage to assume it for all.";
       z.value="";                    /* blank = use each security's own original */
     }
     recalc();
@@ -371,10 +550,6 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
 
     $("scalePill").textContent=(useOriginal?"impact: file originals":"impact: "+trim(Zval)+"% of ADV for all")
                                +"  ·  fund size ×"+mScale.toFixed(2);
-    $("assumeNote").innerHTML="Effective days-to-liquidate = file days-to-liquidate × (security’s original "
-      +"impact ÷ Z) × (M ÷ actual fund value). With Z blank, each security keeps its own original impact "
-      +"assumption, reproducing the file. At horizon X, a security contributes its full weight if it fully "
-      +"liquidates within X days, otherwise X÷(effective days) of its weight.";
   }
 
   /* ---------- helpers ---------- */

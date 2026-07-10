@@ -12,7 +12,16 @@ HTML file and drag in a holdings export.
 3. Pick a fund (by code or description), then adjust parameters — the report
    recalculates live.
 
-The report reads the first worksheet and expects these columns:
+The report has three tabs:
+
+- **Report** — the fund selector, parameters, and the *Portfolio Percent Liquid by
+  Horizon* table.
+- **Data** — the selected fund's securities at row level (sortable), with a totals
+  footer that flags when the security weights don't sum to 100%. Includes a
+  **Download CSV** button.
+- **Notes** — a plain-language explanation of the methodology.
+
+The report reads the OversightSummary worksheet and expects these columns:
 
 | Column | Meaning |
 |---|---|
