@@ -115,8 +115,20 @@
 
       <div class="grid2" style="margin-top:16px">
         <div>
-          <label for="zval">Significant market impact override &nbsp;(% of ADV)</label>
-          <input type="number" id="zval" step="1" min="0.0001" placeholder="original (per security)">
+          <label for="impMode">Significant market impact</label>
+          <select id="impMode">
+            <option value="original">Original (from file)</option>
+            <option value="constant">Set all to a constant %</option>
+            <option value="scale">Scale each by %</option>
+          </select>
+          <input type="number" id="zval" step="1" min="0.0001" class="hidden"
+                 style="margin-top:8px" placeholder="% of ADV">
+          <input type="number" id="scaleval" step="5" min="0.0001" class="hidden"
+                 style="margin-top:8px" placeholder="100 = unchanged">
+          <div class="foot hidden" id="impHint" style="margin-top:6px">
+            100 = unchanged &middot; 200 = double the sellable % (≈2× faster) &middot;
+            50 = half (≈2× slower).
+          </div>
           <div class="foot" id="smiInitial" style="margin-top:6px">&mdash;</div>
         </div>
         <div>
@@ -172,8 +184,18 @@
           <li><b>Significant market impact</b> &mdash; the assumed percentage of average daily trading
               volume that can be sold per day without moving the price (the standard assumption is 20%).
               Assuming a <i>higher</i> percentage lets a position sell faster, lowering its days to
-              liquidate. Left blank, each security keeps its own original assumption from the file,
-              reproducing the file exactly.</li>
+              liquidate. This override offers three choices:
+              <ul>
+                <li><b>Original (from file)</b> &mdash; each security keeps its own assumption from the
+                    file, reproducing the file exactly. Best when the file&rsquo;s assumptions vary by
+                    security.</li>
+                <li><b>Set all to a constant %</b> &mdash; every security is recomputed at a single
+                    assumed percentage (flattening any differences between securities).</li>
+                <li><b>Scale each by %</b> &mdash; every security&rsquo;s own assumption is multiplied by
+                    the entered percentage (100 = unchanged, 200 = double, 50 = half). This stresses the
+                    whole portfolio up or down while preserving each security&rsquo;s relative liquidity,
+                    so it works naturally even when the file&rsquo;s assumptions differ by security.</li>
+              </ul></li>
           <li><b>Market value</b> &mdash; a hypothetical fund size. A <i>larger</i> fund holds larger
               positions and therefore takes proportionally longer to liquidate.</li>
         </ul>
@@ -365,7 +387,22 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
   $("fundCode").addEventListener("change",function(){selectFund(this.value,true);});
   $("fundDesc").addEventListener("change",function(){selectFund(state.descToCode[this.value],false);});
   $("zval").addEventListener("input",recalc);
+  $("scaleval").addEventListener("input",recalc);
   $("mval").addEventListener("input",recalc);
+  $("impMode").addEventListener("change",onModeChange);
+
+  function onModeChange(){
+    var m=$("impMode").value;
+    $("zval").classList.toggle("hidden", m!=="constant");
+    $("scaleval").classList.toggle("hidden", m!=="scale");
+    $("impHint").classList.toggle("hidden", m!=="scale");
+    if(m==="constant" && $("zval").value.trim()===""){
+      var si=state.current?state.fundSmi[state.current]:null;
+      if(si && si.uniform) $("zval").value=si.base;   /* handy starting point for uniform funds */
+    }
+    if(m==="scale" && $("scaleval").value.trim()==="") $("scaleval").value=100;
+    recalc();
+  }
   $("resetM").addEventListener("click",function(){
     if(state.current) $("mval").value=state.fundTotals[state.current];
     recalc();
@@ -495,20 +532,22 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     $("mval").value=tot;              /* M resets to the new fund's actual value */
     renderData(code);                 /* keep the Data tab in sync with the chosen fund */
 
-    /* initial significant_market_impact used in the file, + uniform check */
-    var si=state.fundSmi[code], note=$("smiInitial"), z=$("zval");
+    /* reset the impact override to Original on fund change, then show the file's initial value(s) */
+    $("impMode").value="original";
+    $("zval").value=""; $("scaleval").value="";
+    $("zval").classList.add("hidden");
+    $("scaleval").classList.add("hidden");
+    $("impHint").classList.add("hidden");
+
+    var si=state.fundSmi[code], note=$("smiInitial");
     if(si.uniform){
       note.className="foot";
       note.textContent="Initial impact assumption in file: "+trim(si.base)+"% of ADV (all "
                         +state.byFund[code].length+" securities).";
-      z.value=si.base;               /* pre-fill so the base case matches the file */
     }else{
       note.className="foot warn";
       note.innerHTML="&#9888; Initial impact assumption <b>varies</b> across securities: "
-                     +si.values.map(function(v){return trim(v)+"%";}).join(", ")
-                     +". Leave the box blank to use each security’s own value, "
-                     +"or enter one percentage to assume it for all.";
-      z.value="";                    /* blank = use each security's own original */
+                     +si.values.map(function(v){return trim(v)+"%";}).join(", ")+".";
     }
     recalc();
   }
@@ -519,11 +558,14 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     var rows=state.byFund[state.current];
     var total=state.fundTotals[state.current];
     var M=num($("mval").value);
-    /* blank / non-positive Z => use each security's own original impact (reproduces the file) */
-    var zStr=$("zval").value.trim();
-    var Zval=parseFloat(zStr.replace(/[,\s%]/g,""));
-    var useOriginal=!(zStr!=="" && isFinite(Zval) && Zval>0);
     var mScale=(total>0 && M>0)?(M/total):1;
+
+    /* impact override mode: original (per-security), constant %, or scale-each-by % */
+    var mode=$("impMode").value;
+    var Zval=parseFloat(String($("zval").value).replace(/[,\s%]/g,""));
+    var pval=parseFloat(String($("scaleval").value).replace(/[,\s%]/g,""));
+    var constOK=(mode==="constant" && isFinite(Zval) && Zval>0);
+    var scaleOK=(mode==="scale"    && isFinite(pval) && pval>0);
 
     var days=[].slice.call(document.querySelectorAll('#dayRow input')).map(function(i){return num(i.value);});
 
@@ -537,7 +579,9 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
       rows.forEach(function(r){
         var w=num(r[COLS.pct])/100;                       /* weight of security in fund */
         var smi=num(r[COLS.smi]);                          /* this security's original impact assumption */
-        var factor=useOriginal ? 1 : (smi>0 ? (smi/Zval) : 1);
+        var factor = constOK ? (smi>0 ? (smi/Zval) : 1)    /* set all to a constant % of ADV */
+                   : scaleOK ? (100/pval)                  /* scale each assumption by pval% (uniform on days) */
+                   : 1;                                    /* original: keep each security's own value */
         var dtl=num(r[COLS.dtl]) * factor * mScale;        /* effective days to liquidate */
         if(dtl<=0){ frac+=w; return; }                    /* fully liquid */
         frac += (dtl>X) ? w*(X/dtl) : w;
@@ -548,8 +592,10 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
       tdr.appendChild(td);
     });
 
-    $("scalePill").textContent=(useOriginal?"impact: file originals":"impact: "+trim(Zval)+"% of ADV for all")
-                               +"  ·  fund size ×"+mScale.toFixed(2);
+    var impTxt = constOK ? ("impact: "+trim(Zval)+"% of ADV for all")
+               : scaleOK ? ("impact: each ×"+trim(pval/100)+" of original")
+               : "impact: file originals";
+    $("scalePill").textContent=impTxt+"  ·  fund size ×"+mScale.toFixed(2);
   }
 
   /* ---------- helpers ---------- */

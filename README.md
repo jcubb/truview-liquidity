@@ -37,13 +37,15 @@ The report date is parsed from the filename pattern `_MMDDYYYY_`
 
 ## Parameters
 
-- **Z — significant market impact override** (% of ADV). Higher Z assumes you can
-  sell a larger share of ADV per day, so liquidation is faster. On fund selection
-  the report shows the **initial assumption used in the file** and flags when it is
-  **not uniform** across securities. Leave the box **blank** to use each security's
-  own original value (this reproduces the file exactly); enter a single Z to assume
-  it for *all* securities. For a uniform file the box is pre-filled with the file's
-  value.
+- **Significant market impact** — the assumed % of ADV sellable per day; higher =
+  faster liquidation. On fund selection the report shows the **initial assumption
+  used in the file** and flags when it is **not uniform** across securities. Three
+  override modes:
+  - **Original (from file)** — each security keeps its own value (reproduces the file).
+  - **Set all to a constant %** — every security recomputed at one assumed %.
+  - **Scale each by %** — multiply every security's own assumption (100 = unchanged,
+    200 = double, 50 = half). Preserves each security's relative liquidity, so it's
+    the natural choice for files whose assumptions vary by security.
 - **M — market value override** (default = the fund's actual total). A larger M
   represents a hypothetically larger fund and is *harder* to liquidate.
 - **7 day-horizons** (default 1, 2, 3, 4, 5, 10, 20).
