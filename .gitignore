@@ -1,0 +1,7 @@
+# Build sources — kept local, not published
+_template.html
+xlsx.full.min.js
+
+# Sample / working data
+holdings template 1.xlsx
+truview prompt.txt
