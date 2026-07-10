@@ -132,8 +132,8 @@
           <div class="foot" id="smiInitial" style="margin-top:6px">&mdash;</div>
         </div>
         <div>
-          <label for="mval">Market value override &nbsp;(M)</label>
-          <input type="number" id="mval" step="1000000" min="0">
+          <label for="mval">Market value override</label>
+          <input type="text" id="mval" inputmode="numeric" placeholder="actual fund value">
         </div>
       </div>
 
@@ -142,7 +142,7 @@
           <div class="k" style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Actual fund market value</div>
           <div class="big" id="mvActual">&mdash;</div>
         </div>
-        <button class="btn" id="resetM" type="button">Reset M to actual</button>
+        <button class="btn" id="resetM" type="button">Reset Market Value to actual</button>
         <span class="pill" id="scalePill"></span>
       </div>
     </div>
@@ -389,6 +389,9 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
   $("zval").addEventListener("input",recalc);
   $("scaleval").addEventListener("input",recalc);
   $("mval").addEventListener("input",recalc);
+  $("mval").addEventListener("change",function(){        /* reformat with commas on blur */
+    var v=num(this.value); this.value = v>0 ? fmtNum(v) : ""; recalc();
+  });
   $("impMode").addEventListener("change",onModeChange);
 
   function onModeChange(){
@@ -404,7 +407,7 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     recalc();
   }
   $("resetM").addEventListener("click",function(){
-    if(state.current) $("mval").value=state.fundTotals[state.current];
+    if(state.current) $("mval").value=fmtNum(state.fundTotals[state.current]);
     recalc();
   });
 
@@ -529,7 +532,7 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     $("repN").textContent=state.byFund[code].length;
     var tot=state.fundTotals[code];
     $("mvActual").textContent=fmtMoney(tot);
-    $("mval").value=tot;              /* M resets to the new fund's actual value */
+    $("mval").value=fmtNum(tot);      /* market value resets to the new fund's actual value */
     renderData(code);                 /* keep the Data tab in sync with the chosen fund */
 
     /* reset the impact override to Original on fund change, then show the file's initial value(s) */
@@ -603,6 +606,7 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
   function opt(val,txt){var o=document.createElement("option");o.value=val;o.textContent=txt;return o;}
   function trim(n){return (Math.round(n*100)/100).toString();}
   function fmtMoney(n){return "$"+Math.round(n).toLocaleString("en-US");}
+  function fmtNum(n){return Math.round(n).toLocaleString("en-US");}   /* whole dollars, comma-separated */
 })();
 </script>
 </body>
