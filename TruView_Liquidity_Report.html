@@ -102,12 +102,7 @@
     <div id="panel-report" class="panel">
 
     <div class="card">
-      <div id="assetClassWrap">
-        <label for="assetClass">Asset class</label>
-        <select id="assetClass"></select>
-      </div>
-
-      <div class="grid2" style="margin-top:16px">
+      <div class="grid2">
         <div>
           <label for="fundDesc">Fund description</label>
           <select id="fundDesc"></select>
@@ -250,12 +245,11 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
 (function(){
   "use strict";
   var COLS={fund:"fund",desc:"fund_description",mv:"market_value",
-            pct:"market_value__pct",dtl:"days_to_liquidate",smi:"significant_market_impact",
-            acls:"asset_class"};
+            pct:"market_value__pct",dtl:"days_to_liquidate",smi:"significant_market_impact"};
   var DEFAULT_DAYS=[1,2,3,4,5,10,20];
 
   var state={rows:[],funds:[],byFund:{},codeToDesc:{},descToCode:{},
-             fundTotals:{},fundClass:{},current:null,dataSort:{col:null,dir:1}};
+             fundTotals:{},current:null,dataSort:{col:null,dir:1}};
 
   var $=function(id){return document.getElementById(id);};
 
@@ -340,15 +334,11 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     if(missing.length){showErr("Missing expected column(s): "+missing.join(", "));return;}
 
     state.rows=rows.filter(function(r){return r[COLS.mv]!=null;});
-    state.byFund={}; state.codeToDesc={}; state.descToCode={}; state.fundTotals={}; state.fundClass={};
+    state.byFund={}; state.codeToDesc={}; state.descToCode={}; state.fundTotals={};
     state.rows.forEach(function(r){
       var code=String(r[COLS.fund]), desc=String(r[COLS.desc]);
       (state.byFund[code]=state.byFund[code]||[]).push(r);
       state.codeToDesc[code]=desc; state.descToCode[desc]=code;
-      if(state.fundClass[code]==null){
-        var ac=r[COLS.acls];
-        state.fundClass[code]=(ac==null||ac==="")?"":String(ac);
-      }
     });
     state.funds=Object.keys(state.byFund);
     state.fundSmi={};
@@ -365,20 +355,13 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     $("repDate").textContent=d||"not detected in filename";
     $("repFile").textContent=fname;
 
-    /* asset-class dropdown (filters the fund dropdowns); hidden if the file has no asset_class */
-    var classes=[];
+    /* fund dropdowns */
+    var fc=$("fundCode"), fd=$("fundDesc");
+    fc.innerHTML=""; fd.innerHTML="";
     state.funds.forEach(function(code){
-      var c=state.fundClass[code];
-      if(c && classes.indexOf(c)<0) classes.push(c);
+      fc.appendChild(opt(code,code));
+      fd.appendChild(opt(state.codeToDesc[code], state.codeToDesc[code]));
     });
-    classes.sort();
-    var ac=$("assetClass"); ac.innerHTML="";
-    ac.appendChild(opt("__all__","All"));
-    classes.forEach(function(c){ ac.appendChild(opt(c,c)); });
-    ac.value="__all__";
-    $("assetClassWrap").style.display = classes.length ? "" : "none";
-
-    populateFundDropdowns("__all__");
 
     /* day boxes */
     var dr=$("dayRow"); dr.innerHTML="";
@@ -398,24 +381,6 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
   }
 
   /* ---------- control wiring ---------- */
-  function fundsInClass(cls){
-    return state.funds.filter(function(code){
-      return cls==="__all__" || state.fundClass[code]===cls;
-    });
-  }
-  function populateFundDropdowns(cls){
-    var list=fundsInClass(cls), fc=$("fundCode"), fd=$("fundDesc");
-    fc.innerHTML=""; fd.innerHTML="";
-    list.forEach(function(code){
-      fc.appendChild(opt(code,code));
-      fd.appendChild(opt(state.codeToDesc[code], state.codeToDesc[code]));
-    });
-    return list;
-  }
-  $("assetClass").addEventListener("change",function(){
-    var list=populateFundDropdowns(this.value);
-    if(list.length) selectFund(list[0],true);
-  });
   $("fundCode").addEventListener("change",function(){selectFund(this.value,true);});
   $("fundDesc").addEventListener("change",function(){selectFund(state.descToCode[this.value],false);});
   $("zval").addEventListener("input",recalc);

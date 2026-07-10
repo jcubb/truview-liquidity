@@ -9,8 +9,8 @@ HTML file and drag in a holdings export.
 
 1. Open **`TruView_Liquidity_Report.html`** in any modern browser.
 2. Drag an OversightSummary `.xlsx` onto the page (or click to browse).
-3. Optionally narrow by **asset class**, then pick a fund (by description or fund
-   ticker), then adjust parameters — the report recalculates live.
+3. Pick a fund (by description or fund ticker), then adjust parameters — the report
+   recalculates live.
 
 The report has three tabs:
 
