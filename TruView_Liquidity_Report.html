@@ -183,14 +183,43 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
 
   function showErr(msg){var el=$("loadErr");el.textContent=msg;el.classList.remove("hidden");}
 
+  /* Choose the right worksheet: prefer a sheet named "OversightSummary...",
+     else the first sheet that actually has the required columns, else give up. */
+  function normName(s){return String(s).toLowerCase().replace(/[^a-z]/g,"");}
+  function sheetHasCols(wb,name){
+    var j=XLSX.utils.sheet_to_json(wb.Sheets[name],{defval:null});
+    if(!j.length) return false;
+    var have=Object.keys(j[0]);
+    return [COLS.fund,COLS.mv,COLS.pct,COLS.dtl,COLS.smi]
+             .every(function(c){return have.indexOf(c)>=0;});
+  }
+  function pickSheet(wb){
+    var names=wb.SheetNames;
+    var named=names.filter(function(n){return normName(n).indexOf("oversightsummary")>=0;});
+    for(var i=0;i<named.length;i++){                 /* 1. named + has columns */
+      if(sheetHasCols(wb,named[i])) return {name:named[i],ws:wb.Sheets[named[i]]};
+    }
+    if(named.length) return {name:named[0],ws:wb.Sheets[named[0]]}; /* 2. named (let column check report) */
+    for(var k=0;k<names.length;k++){                 /* 3. any sheet with the columns */
+      if(sheetHasCols(wb,names[k])) return {name:names[k],ws:wb.Sheets[names[k]]};
+    }
+    return null;
+  }
+
   function handleFile(file){
     $("loadErr").classList.add("hidden");
     var reader=new FileReader();
     reader.onload=function(ev){
       try{
         var wb=XLSX.read(new Uint8Array(ev.target.result),{type:"array"});
-        var ws=wb.Sheets[wb.SheetNames[0]];
-        var json=XLSX.utils.sheet_to_json(ws,{defval:null});
+        var pick=pickSheet(wb);
+        if(!pick){
+          showErr('Could not find an "OversightSummary" sheet (or any sheet with the expected columns). '+
+                  'Sheets in this file: '+wb.SheetNames.join(", "));
+          return;
+        }
+        state.sheetName=pick.name;
+        var json=XLSX.utils.sheet_to_json(pick.ws,{defval:null});
         ingest(json,file.name);
       }catch(err){ showErr("Could not read that file: "+err.message); }
     };
@@ -230,7 +259,7 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     /* meta */
     var d=parseDateFromName(fname);
     $("repDate").textContent=d||"not detected in filename";
-    $("repFile").textContent=fname;
+    $("repFile").textContent=fname+(state.sheetName?"  ·  sheet: "+state.sheetName:"");
 
     /* dropdowns */
     var fc=$("fundCode"), fd=$("fundDesc");
