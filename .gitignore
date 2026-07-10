@@ -1,6 +1,7 @@
-# Build sources — kept local, not published
+# Build sources & dev docs — kept local, not published
 _template.html
 xlsx.full.min.js
+CLAUDE.md
 
 # Sample / working data
 holdings template 1.xlsx
