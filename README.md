@@ -21,15 +21,20 @@ The report reads the first worksheet and expects these columns:
 | `market_value` | Market value of the security |
 | `market_value__pct` | Security weight in the fund, in percentage points (sums to 100) |
 | `days_to_liquidate` | Days to liquidate the position at the base ADV assumption |
-| `significant_market_impact` | Base ADV assumption (standard = 20, i.e. 20% of ADV/day) |
+| `significant_market_impact` | The ADV assumption used per security when the file was produced (standard = 20, i.e. 20% of ADV/day; may differ per security) |
 
 The report date is parsed from the filename pattern `_MMDDYYYY_`
 (e.g. `OversightSummary_DFA_06302026_pivot.xlsx` → June 30, 2026).
 
 ## Parameters
 
-- **Z — significant market impact override** (% of ADV, default 20). Higher Z
-  assumes you can sell a larger share of ADV per day, so liquidation is faster.
+- **Z — significant market impact override** (% of ADV). Higher Z assumes you can
+  sell a larger share of ADV per day, so liquidation is faster. On fund selection
+  the report shows the **initial assumption used in the file** and flags when it is
+  **not uniform** across securities. Leave the box **blank** to use each security's
+  own original value (this reproduces the file exactly); enter a single Z to assume
+  it for *all* securities. For a uniform file the box is pre-filled with the file's
+  value.
 - **M — market value override** (default = the fund's actual total). A larger M
   represents a hypothetically larger fund and is *harder* to liquidate.
 - **7 day-horizons** (default 1, 2, 3, 4, 5, 10, 20).

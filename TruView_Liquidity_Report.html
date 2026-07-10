@@ -46,6 +46,7 @@
   td.res{font-size:20px;font-weight:700;color:var(--accent)}
   td.days{font-weight:600}
   .foot{font-size:12px;color:var(--muted);margin-top:10px}
+  .foot.warn{color:#b45309;font-weight:600}
   .err{color:#b91c1c;font-size:14px;margin-top:10px}
   .pill{display:inline-block;background:var(--accent-soft);color:var(--accent);border-radius:999px;
         padding:2px 10px;font-size:12px;font-weight:600}
@@ -92,7 +93,8 @@
       <div class="grid2" style="margin-top:16px">
         <div>
           <label for="zval">Significant market impact override &nbsp;(Z, % of ADV)</label>
-          <input type="number" id="zval" step="1" min="0.0001" value="20">
+          <input type="number" id="zval" step="1" min="0.0001" placeholder="original (per security)">
+          <div class="foot" id="smiInitial" style="margin-top:6px">&mdash;</div>
         </div>
         <div>
           <label for="mval">Market value override &nbsp;(M)</label>
@@ -252,8 +254,13 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
       state.codeToDesc[code]=desc; state.descToCode[desc]=code;
     });
     state.funds=Object.keys(state.byFund);
+    state.fundSmi={};
     state.funds.forEach(function(code){
       state.fundTotals[code]=state.byFund[code].reduce(function(s,r){return s+num(r[COLS.mv]);},0);
+      var seen={};
+      state.byFund[code].forEach(function(r){ seen[Math.round(num(r[COLS.smi])*10000)/10000]=true; });
+      var vals=Object.keys(seen).map(Number).sort(function(a,b){return a-b;});
+      state.fundSmi[code]={values:vals, uniform:vals.length<=1, base:vals.length?vals[0]:20};
     });
 
     /* meta */
@@ -308,6 +315,22 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     var tot=state.fundTotals[code];
     $("mvActual").textContent=fmtMoney(tot);
     $("mval").value=tot;              /* M resets to the new fund's actual value */
+
+    /* initial significant_market_impact used in the file, + uniform check */
+    var si=state.fundSmi[code], note=$("smiInitial"), z=$("zval");
+    if(si.uniform){
+      note.className="foot";
+      note.textContent="Initial impact assumption in file: "+trim(si.base)+"% of ADV (all "
+                        +state.byFund[code].length+" securities).";
+      z.value=si.base;               /* pre-fill so the base case matches the file */
+    }else{
+      note.className="foot warn";
+      note.innerHTML="&#9888; Initial impact assumption <b>varies</b> across securities: "
+                     +si.values.map(function(v){return trim(v)+"%";}).join(", ")
+                     +". Leave the box blank to use each security’s own value, "
+                     +"or enter one Z to assume it for all.";
+      z.value="";                    /* blank = use each security's own original */
+    }
     recalc();
   }
 
@@ -316,9 +339,11 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     if(!state.current) return;
     var rows=state.byFund[state.current];
     var total=state.fundTotals[state.current];
-    var Z=num($("zval").value);
     var M=num($("mval").value);
-    if(!(Z>0)){Z=20;}
+    /* blank / non-positive Z => use each security's own original impact (reproduces the file) */
+    var zStr=$("zval").value.trim();
+    var Zval=parseFloat(zStr.replace(/[,\s%]/g,""));
+    var useOriginal=!(zStr!=="" && isFinite(Zval) && Zval>0);
     var mScale=(total>0 && M>0)?(M/total):1;
 
     var days=[].slice.call(document.querySelectorAll('#dayRow input')).map(function(i){return num(i.value);});
@@ -332,8 +357,9 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
       var frac=0;
       rows.forEach(function(r){
         var w=num(r[COLS.pct])/100;                       /* weight of security in fund */
-        var smi=num(r[COLS.smi]);                          /* base ADV assumption (20)   */
-        var dtl=num(r[COLS.dtl]) * (smi/Z) * mScale;       /* effective days to liquidate */
+        var smi=num(r[COLS.smi]);                          /* this security's original impact assumption */
+        var factor=useOriginal ? 1 : (smi>0 ? (smi/Zval) : 1);
+        var dtl=num(r[COLS.dtl]) * factor * mScale;        /* effective days to liquidate */
         if(dtl<=0){ frac+=w; return; }                    /* fully liquid */
         frac += (dtl>X) ? w*(X/dtl) : w;
       });
@@ -343,10 +369,12 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
       tdr.appendChild(td);
     });
 
-    $("scalePill").textContent="days-to-liquidate scaled "+(mScale*(20/Z)).toFixed(3)+"× vs. base";
-    $("assumeNote").innerHTML="Assumptions: each security’s days-to-liquidate is scaled by (base impact "
-      +"÷ Z) and by (M ÷ actual fund value). At horizon X, a security contributes its full weight if it "
-      +"fully liquidates within X days, otherwise X÷(effective days) of its weight.";
+    $("scalePill").textContent=(useOriginal?"impact: file originals":"impact: "+trim(Zval)+"% of ADV for all")
+                               +"  ·  fund size ×"+mScale.toFixed(2);
+    $("assumeNote").innerHTML="Effective days-to-liquidate = file days-to-liquidate × (security’s original "
+      +"impact ÷ Z) × (M ÷ actual fund value). With Z blank, each security keeps its own original impact "
+      +"assumption, reproducing the file. At horizon X, a security contributes its full weight if it fully "
+      +"liquidates within X days, otherwise X÷(effective days) of its weight.";
   }
 
   /* ---------- helpers ---------- */
