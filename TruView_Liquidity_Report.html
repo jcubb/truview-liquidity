@@ -45,6 +45,8 @@
   th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
   td.res{font-size:20px;font-weight:700;color:var(--accent)}
   td.days{font-weight:600}
+  #scenTbl td.res{font-size:16px}
+  #scenTbl input{max-width:90px;text-align:center;margin:0 auto;display:block}
   .foot{font-size:12px;color:var(--muted);margin-top:10px}
   .foot.warn{color:#b45309;font-weight:600}
   .tabbar{display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid var(--line)}
@@ -95,6 +97,7 @@
 
     <div class="tabbar">
       <button class="tab active" data-tab="report" type="button">Report</button>
+      <button class="tab" data-tab="scenarios" type="button">Scenarios</button>
       <button class="tab" data-tab="data" type="button">Data</button>
       <button class="tab" data-tab="notes" type="button">Notes</button>
     </div>
@@ -162,6 +165,24 @@
 
     </div><!-- /panel-report -->
 
+    <div id="panel-scenarios" class="panel hidden">
+      <div class="card">
+        <label>Days to liquidate</label>
+        <div class="row" id="scDayRow"></div>
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 4px;font-size:15px">Scenario Analysis &mdash; Portfolio Percent Liquid by Horizon</h3>
+        <table id="scenTbl">
+          <thead><tr id="scThDays"></tr></thead>
+          <tbody id="scenBody"></tbody>
+        </table>
+        <div class="foot">ADV assumption %: 100 = the file&rsquo;s original assumptions; 25 = each
+          security&rsquo;s assumption cut to 25% of original (&asymp;4&times; slower). Fund size &times;:
+          multiplies the fund&rsquo;s actual market value. Scenarios always start from the file&rsquo;s
+          original values for the selected fund &mdash; the Report tab&rsquo;s overrides do not apply here.</div>
+      </div>
+    </div><!-- /panel-scenarios -->
+
     <div id="panel-data" class="panel hidden">
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:12px">
@@ -207,6 +228,13 @@
            portfolio weight counts; otherwise the fraction (horizon &divide; effective days to liquidate)
            of its weight counts. Summing across all securities gives the percent of the portfolio that is
            liquid by that horizon.</p>
+        <p><b>Scenarios tab</b> &mdash; runs the same calculation for four side-by-side scenarios,
+           each defined by two numbers: an <b>ADV assumption %</b> that scales every security&rsquo;s
+           own market-impact assumption (100 = the file&rsquo;s original values; 25 = each cut to a
+           quarter, so liquidation takes &asymp;4&times; as long) and a <b>fund size multiplier</b>
+           applied to the fund&rsquo;s actual market value. Scenario rows always start from the
+           file&rsquo;s original values for the selected fund; the Report tab&rsquo;s overrides do
+           not carry over.</p>
         <p class="foot">Because these figures come directly from the file&rsquo;s security weights, if
            those weights do not sum to exactly 100% the portfolio total can land slightly above or below
            100%. The <b>Data</b> tab shows the weight total and flags this.</p>
@@ -247,6 +275,7 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
   var COLS={fund:"fund",desc:"fund_description",mv:"market_value",
             pct:"market_value__pct",dtl:"days_to_liquidate",smi:"significant_market_impact"};
   var DEFAULT_DAYS=[1,2,3,4,5,10,20];
+  var SCEN_DEFAULTS=[[100,1],[25,1],[100,1.5],[25,1.5]];   /* [ADV assumption %, fund size ×] */
 
   var state={rows:[],funds:[],byFund:{},codeToDesc:{},descToCode:{},
              fundTotals:{},current:null,dataSort:{col:null,dir:1}};
@@ -374,6 +403,34 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
       wrap.appendChild(lab); wrap.appendChild(inp); dr.appendChild(wrap);
     });
 
+    /* Scenarios tab: its own day boxes (independent of Report's) */
+    var sdr=$("scDayRow"); sdr.innerHTML="";
+    DEFAULT_DAYS.forEach(function(v,i){
+      var wrap=document.createElement("div"); wrap.className="daybox";
+      var lab=document.createElement("label"); lab.textContent="Box "+(i+1);
+      var inp=document.createElement("input");
+      inp.type="number"; inp.min="0"; inp.step="1"; inp.value=v;
+      inp.addEventListener("input",recalcScenarios);
+      wrap.appendChild(lab); wrap.appendChild(inp); sdr.appendChild(wrap);
+    });
+
+    /* Scenarios tab: 4 editable rows of [ADV assumption %, fund size ×] + result cells */
+    var sb=$("scenBody"); sb.innerHTML="";
+    SCEN_DEFAULTS.forEach(function(pair){
+      var tr=document.createElement("tr");
+      pair.forEach(function(v,j){
+        var td=document.createElement("td");
+        var inp=document.createElement("input");
+        inp.type="number"; inp.min="0.0001"; inp.step=(j===0?"5":"0.1"); inp.value=v;
+        inp.addEventListener("input",recalcScenarios);
+        td.appendChild(inp); tr.appendChild(td);
+      });
+      DEFAULT_DAYS.forEach(function(){
+        var td=document.createElement("td"); td.className="res"; tr.appendChild(td);
+      });
+      sb.appendChild(tr);
+    });
+
     selectFund(state.funds[0],true);
 
     $("app").classList.remove("hidden");
@@ -413,13 +470,14 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     b.addEventListener("click",function(){ showTab(b.dataset.tab); });
   });
   function showTab(name){
-    ["report","data","notes"].forEach(function(t){
+    ["report","scenarios","data","notes"].forEach(function(t){
       $("panel-"+t).classList.toggle("hidden", t!==name);
     });
     [].slice.call(document.querySelectorAll(".tab")).forEach(function(b){
       b.classList.toggle("active", b.dataset.tab===name);
     });
     if(name==="data") renderData(state.current);
+    if(name==="scenarios") recalcScenarios();
   }
 
   $("csvBtn").addEventListener("click",function(){
@@ -553,9 +611,22 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
                      +si.values.map(function(v){return trim(v)+"%";}).join(", ")+".";
     }
     recalc();
+    recalcScenarios();
   }
 
   /* ---------- calculation ---------- */
+  /* % of the portfolio liquid at horizon X; factorOf(row) returns the impact factor per security */
+  function pctLiquid(rows,X,factorOf,mScale){
+    var frac=0;
+    rows.forEach(function(r){
+      var dtl=num(r[COLS.dtl]) * factorOf(r) * mScale;   /* effective days to liquidate */
+      var w=num(r[COLS.pct])/100;
+      if(dtl<=0){ frac+=w; return; }                     /* fully liquid */
+      frac += (dtl>X) ? w*(X/dtl) : w;
+    });
+    return frac*100;
+  }
+
   function recalc(){
     if(!state.current) return;
     var rows=state.byFund[state.current];
@@ -577,21 +648,18 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     thd.innerHTML="<th style='text-align:left'>Horizon</th>";
     tdr.innerHTML="<td class='days' style='text-align:left'>% sellable</td>";
 
+    var factorOf=function(r){
+      var smi=num(r[COLS.smi]);                            /* this security's original impact assumption */
+      return constOK ? (smi>0 ? (smi/Zval) : 1)            /* set all to a constant % of ADV */
+           : scaleOK ? (100/pval)                          /* scale each assumption by pval% (uniform on days) */
+           : 1;                                            /* original: keep each security's own value */
+    };
+
     days.forEach(function(X){
-      var frac=0;
-      rows.forEach(function(r){
-        var w=num(r[COLS.pct])/100;                       /* weight of security in fund */
-        var smi=num(r[COLS.smi]);                          /* this security's original impact assumption */
-        var factor = constOK ? (smi>0 ? (smi/Zval) : 1)    /* set all to a constant % of ADV */
-                   : scaleOK ? (100/pval)                  /* scale each assumption by pval% (uniform on days) */
-                   : 1;                                    /* original: keep each security's own value */
-        var dtl=num(r[COLS.dtl]) * factor * mScale;        /* effective days to liquidate */
-        if(dtl<=0){ frac+=w; return; }                    /* fully liquid */
-        frac += (dtl>X) ? w*(X/dtl) : w;
-      });
+      var pct=pctLiquid(rows,X,factorOf,mScale);
       var th=document.createElement("th"); th.className="days"; th.textContent=X+(X==1?" day":" days");
       thd.appendChild(th);
-      var td=document.createElement("td"); td.className="res"; td.textContent=(frac*100).toFixed(1)+"%";
+      var td=document.createElement("td"); td.className="res"; td.textContent=pct.toFixed(1)+"%";
       tdr.appendChild(td);
     });
 
@@ -599,6 +667,33 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
                : scaleOK ? ("impact: each ×"+trim(pval/100)+" of original")
                : "impact: file originals";
     $("scalePill").textContent=impTxt+"  ·  fund size ×"+mScale.toFixed(2);
+  }
+
+  /* Scenarios tab: each row scales the file's original assumptions — ADV % (scale-each semantics)
+     and a fund-size multiplier on the actual market value. Report-tab overrides do not apply. */
+  function recalcScenarios(){
+    if(!state.current) return;
+    var rows=state.byFund[state.current];
+    var days=[].slice.call(document.querySelectorAll('#scDayRow input')).map(function(i){return num(i.value);});
+
+    var thd=$("scThDays");
+    thd.innerHTML="<th>ADV assumption %</th><th>Fund size &times;</th>";
+    days.forEach(function(X){
+      var th=document.createElement("th"); th.className="days"; th.textContent=X+(X==1?" day":" days");
+      thd.appendChild(th);
+    });
+
+    [].slice.call($("scenBody").querySelectorAll("tr")).forEach(function(tr){
+      var ins=tr.querySelectorAll("input");
+      var p=parseFloat(String(ins[0].value).replace(/[,\s%]/g,""));
+      var mult=parseFloat(String(ins[1].value).replace(/[,\s]/g,""));
+      var ok=isFinite(p)&&p>0&&isFinite(mult)&&mult>0;
+      var factorOf=function(){return 100/p;};
+      var cells=tr.querySelectorAll("td.res");
+      days.forEach(function(X,i){
+        cells[i].textContent = ok ? pctLiquid(rows,X,factorOf,mult).toFixed(1)+"%" : "—";
+      });
+    });
   }
 
   /* ---------- helpers ---------- */
