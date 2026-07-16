@@ -108,7 +108,8 @@
       <div class="grid2">
         <div>
           <label for="fundDesc">Fund description</label>
-          <select id="fundDesc"></select>
+          <input id="fundDesc" list="fundDescList" placeholder="type to search funds&hellip;" autocomplete="off">
+          <datalist id="fundDescList"></datalist>
         </div>
         <div>
           <label for="fundCode">Fund Ticker</label>
@@ -384,12 +385,12 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     $("repDate").textContent=d||"not detected in filename";
     $("repFile").textContent=fname;
 
-    /* fund dropdowns */
-    var fc=$("fundCode"), fd=$("fundDesc");
-    fc.innerHTML=""; fd.innerHTML="";
+    /* fund selectors: ticker dropdown + description type-ahead (datalist) */
+    var fc=$("fundCode"), fdl=$("fundDescList");
+    fc.innerHTML=""; fdl.innerHTML="";
     state.funds.forEach(function(code){
       fc.appendChild(opt(code,code));
-      fd.appendChild(opt(state.codeToDesc[code], state.codeToDesc[code]));
+      fdl.appendChild(opt(state.codeToDesc[code], state.codeToDesc[code]));
     });
 
     /* day boxes */
@@ -431,15 +432,32 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
       sb.appendChild(tr);
     });
 
-    selectFund(state.funds[0],true);
+    selectFund(state.funds[0]);
 
     $("app").classList.remove("hidden");
     $("dropCard").classList.add("hidden");
   }
 
   /* ---------- control wiring ---------- */
-  $("fundCode").addEventListener("change",function(){selectFund(this.value,true);});
-  $("fundDesc").addEventListener("change",function(){selectFund(state.descToCode[this.value],false);});
+  $("fundCode").addEventListener("change",function(){selectFund(this.value);});
+  /* description type-ahead: match typed text case-insensitively; picking a datalist
+     entry fires "change". On blur, restore the current fund's name if nothing matched. */
+  function descToCodeCI(v){
+    v=String(v).trim().toLowerCase();
+    if(!v) return null;
+    for(var i=0;i<state.funds.length;i++){
+      if(state.codeToDesc[state.funds[i]].toLowerCase()===v) return state.funds[i];
+    }
+    return null;
+  }
+  $("fundDesc").addEventListener("change",function(){
+    var code=descToCodeCI(this.value);
+    if(code) selectFund(code);
+  });
+  $("fundDesc").addEventListener("blur",function(){
+    if(state.current && !descToCodeCI(this.value)) this.value=state.codeToDesc[state.current];
+  });
+  $("fundDesc").addEventListener("focus",function(){this.select();});
   $("zval").addEventListener("input",recalc);
   $("scaleval").addEventListener("input",recalc);
   $("mval").addEventListener("input",recalc);
@@ -582,11 +600,11 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
   }
   function csvCell(v){var s=String(v);return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
 
-  function selectFund(code,syncDesc){
+  function selectFund(code){
     if(!code||!state.byFund[code]) return;
     state.current=code;
     $("fundCode").value=code;
-    if(syncDesc) $("fundDesc").value=state.codeToDesc[code];
+    $("fundDesc").value=state.codeToDesc[code];   /* canonical name (fixes typed-case variants) */
     $("repN").textContent=state.byFund[code].length;
     var tot=state.fundTotals[code];
     $("mvActual").textContent=fmtMoney(tot);
