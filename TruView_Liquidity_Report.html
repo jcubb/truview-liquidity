@@ -32,6 +32,15 @@
         width:100%;background:#fff;color:var(--ink)}
   select:focus,input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  /* Search block reuses .grid2, so the input's edges line up exactly with the Fund
+     description select below it; the Clear button sits in the right-hand column and
+     bottom-aligns with the input (the count line lives outside the grid for this). */
+  .fundsearch{margin-bottom:16px}
+  .fundsearch .clear-cell{display:flex;align-items:flex-end}
+  .fundsearch #fundCount{margin-top:6px}
+  #fundSearchClear{font-size:15px;padding:8px 16px}   /* match input metrics → equal height */
+  .btn:disabled{opacity:.45;cursor:default}
+  .btn:disabled:hover{background:#fff}
   .row{display:flex;gap:12px;flex-wrap:wrap;margin-top:6px}
   .daybox{flex:1;min-width:78px}
   .daybox input{text-align:center}
@@ -105,11 +114,23 @@
     <div id="panel-report" class="panel">
 
     <div class="card">
+      <div class="fundsearch">
+        <div class="grid2">
+          <div>
+            <label for="fundSearch">Search funds</label>
+            <input id="fundSearch" type="text" placeholder="filter by name or ticker&hellip;" autocomplete="off">
+          </div>
+          <div class="clear-cell">
+            <button id="fundSearchClear" class="btn" type="button" disabled>Clear</button>
+          </div>
+        </div>
+        <div id="fundCount" class="foot"></div>
+      </div>
+
       <div class="grid2">
         <div>
           <label for="fundDesc">Fund description</label>
-          <input id="fundDesc" list="fundDescList" placeholder="type to search funds&hellip;" autocomplete="off">
-          <datalist id="fundDescList"></datalist>
+          <select id="fundDesc"></select>
         </div>
         <div>
           <label for="fundCode">Fund Ticker</label>
@@ -385,13 +406,9 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
     $("repDate").textContent=d||"not detected in filename";
     $("repFile").textContent=fname;
 
-    /* fund selectors: ticker dropdown + description type-ahead (datalist) */
-    var fc=$("fundCode"), fdl=$("fundDescList");
-    fc.innerHTML=""; fdl.innerHTML="";
-    state.funds.forEach(function(code){
-      fc.appendChild(opt(code,code));
-      fdl.appendChild(opt(state.codeToDesc[code], state.codeToDesc[code]));
-    });
+    /* fund selectors: a search box filters two plain dropdowns (description + ticker) */
+    $("fundSearch").value="";      /* a new file starts unfiltered */
+    renderFundOptions();
 
     /* day boxes */
     var dr=$("dayRow"); dr.innerHTML="";
@@ -439,25 +456,19 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
   }
 
   /* ---------- control wiring ---------- */
+  /* Both fund pickers carry the ticker as their option value, so they stay in lockstep
+     and neither one doubles as a filter box — that job belongs to #fundSearch alone. */
   $("fundCode").addEventListener("change",function(){selectFund(this.value);});
-  /* description type-ahead: match typed text case-insensitively; picking a datalist
-     entry fires "change". On blur, restore the current fund's name if nothing matched. */
-  function descToCodeCI(v){
-    v=String(v).trim().toLowerCase();
-    if(!v) return null;
-    for(var i=0;i<state.funds.length;i++){
-      if(state.codeToDesc[state.funds[i]].toLowerCase()===v) return state.funds[i];
-    }
-    return null;
-  }
-  $("fundDesc").addEventListener("change",function(){
-    var code=descToCodeCI(this.value);
-    if(code) selectFund(code);
+  $("fundDesc").addEventListener("change",function(){selectFund(this.value);});
+
+  $("fundSearch").addEventListener("input",renderFundOptions);
+  $("fundSearch").addEventListener("focus",function(){this.select();});  /* typing replaces a stale query */
+  $("fundSearch").addEventListener("keydown",function(e){
+    if(e.key==="Escape"){ this.value=""; renderFundOptions(); }
   });
-  $("fundDesc").addEventListener("blur",function(){
-    if(state.current && !descToCodeCI(this.value)) this.value=state.codeToDesc[state.current];
+  $("fundSearchClear").addEventListener("click",function(){
+    $("fundSearch").value=""; renderFundOptions(); $("fundSearch").focus();
   });
-  $("fundDesc").addEventListener("focus",function(){this.select();});
   $("zval").addEventListener("input",recalc);
   $("scaleval").addEventListener("input",recalc);
   $("mval").addEventListener("input",recalc);
@@ -600,11 +611,34 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
   }
   function csvCell(v){var s=String(v);return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
 
+  /* Rebuild both fund dropdowns from the search query (substring match on ticker or
+     description, case-insensitive). The selected fund is always kept in the list even
+     when it doesn't match, so the pickers can never disagree with the report below. */
+  function renderFundOptions(){
+    var q=$("fundSearch").value.trim().toLowerCase();
+    var fc=$("fundCode"), fd=$("fundDesc");
+    fc.innerHTML=""; fd.innerHTML="";
+    var shown=0, pinned=false;
+    state.funds.forEach(function(code){
+      var desc=state.codeToDesc[code];
+      var hit=!q || code.toLowerCase().indexOf(q)>=0 || desc.toLowerCase().indexOf(q)>=0;
+      if(hit) shown++; else if(code===state.current) pinned=true; else return;
+      fc.appendChild(opt(code,code));
+      fd.appendChild(opt(code,desc));
+    });
+    if(state.current){ fc.value=state.current; fd.value=state.current; }
+
+    var total=state.funds.length;
+    $("fundCount").textContent = !q ? (total+" fund"+(total===1?"":"s"))
+      : shown ? ("Showing "+shown+" of "+total+(pinned?", plus the selected fund":""))
+              : ("No funds match “"+$("fundSearch").value.trim()+"” — still showing the selected fund");
+    $("fundSearchClear").disabled=!q;   /* stays visible but inert when there's nothing to clear */
+  }
+
   function selectFund(code){
     if(!code||!state.byFund[code]) return;
     state.current=code;
-    $("fundCode").value=code;
-    $("fundDesc").value=state.codeToDesc[code];   /* canonical name (fixes typed-case variants) */
+    renderFundOptions();              /* also writes both selectors to the new fund */
     $("repN").textContent=state.byFund[code].length;
     var tot=state.fundTotals[code];
     $("mvActual").textContent=fmtMoney(tot);
